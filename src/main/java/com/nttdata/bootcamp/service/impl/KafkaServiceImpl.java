@@ -21,43 +21,40 @@ import java.util.UUID;
 @Service
 public class KafkaServiceImpl implements KafkaService {
 
-    private final KafkaSender<String, BootCoin> kafkaSender;
+    private final BootCoinRepository bootCoinRepository;
 
     @Autowired
-    public KafkaServiceImpl(KafkaSender<String, BootCoin> kafkaSender) {
-        this.kafkaSender = kafkaSender;
+    public KafkaServiceImpl(BootCoinRepository bootCoinRepository) {
+        this.bootCoinRepository = bootCoinRepository;
     }
 
     @KafkaListener(
             topics = "${topic.bootCoin.name:topic_bootCoin}",
             containerFactory = "kafkaListenerContainerFactory",
-            groupId = "grupo1")
-    public Mono<Void> consumerSave(EventKafka<?> eventKafka) {
-        if (eventKafka instanceof BootCoinCreatedEventKafka) {
-            BootCoinCreatedEventKafka createdEvent = (BootCoinCreatedEventKafka) eventKafka;
-            log.info("Received Data created event .... with Id={}, data={}",
-                    createdEvent.getId(),
-                    createdEvent.getData());
+            groupId = "grupo1"
+    )
+    @Override
+    public void consumerSave(EventKafka<?> eventKafka) {
 
-            VirtualCoinKafkaDto virtualCoinKafkaDto = createdEvent.getData();
+        if (eventKafka instanceof BootCoinCreatedEventKafka) {
+
+            BootCoinCreatedEventKafka createdEvent =
+                    (BootCoinCreatedEventKafka) eventKafka;
+
+            VirtualCoinKafkaDto dto = createdEvent.getData();
+
             BootCoin bootCoin = new BootCoin();
-            bootCoin.setMount(virtualCoinKafkaDto.getMount());
-            bootCoin.setCellNumber(virtualCoinKafkaDto.getCellNumberReceive());
+            bootCoin.setMount(dto.getMount());
+            bootCoin.setCellNumber(dto.getCellNumberReceive());
             bootCoin.setNumberTransaction(UUID.randomUUID().toString());
 
-            // Crear el ProducerRecord
-            ProducerRecord<String, BootCoin> producerRecord = new ProducerRecord<>("your-topic", bootCoin.getNumberTransaction(), bootCoin);
-
-            // Crear el SenderRecord usando el ProducerRecord
-            SenderRecord<String, BootCoin, String> senderRecord = SenderRecord.create(producerRecord, bootCoin.getNumberTransaction());
-
-            // Enviar el evento a Kafka de forma reactiva
-            return kafkaSender.send(Mono.just(senderRecord))
-                    .doOnTerminate(() -> log.info("Message sent to Kafka"))
-                    .doOnError(error -> log.error("Error sending message to Kafka", error))
-                    .then();  // Mono<Void> para indicar que el proceso ha terminado
+            bootCoinRepository.save(bootCoin)
+                    .doOnSuccess(b ->
+                            log.info("BootCoin guardado correctamente: {}", b))
+                    .doOnError(e ->
+                            log.error("Error guardando BootCoin", e))
+                    .subscribe();
         }
-        return Mono.empty();  // Si no es el tipo esperado, no hacer nada
     }
-}
 
+}

@@ -5,36 +5,51 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.annotation.EnableKafka;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import reactor.kafka.receiver.KafkaReceiver;
 import reactor.kafka.receiver.ReceiverOptions;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Configuration
+@EnableKafka
 public class KafkaConsumerConfig {
 
-    private final String bootstrapAddress = "localhost:9092";
-    private final String topic = "payment-topic";
+    private static final String BOOTSTRAP_ADDRESS = "localhost:9092";
 
     @Bean
-    public KafkaReceiver<String, EventKafka<?>> kafkaReceiver() {
+    public ConsumerFactory<String, EventKafka<?>> consumerFactory() {
 
         Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_ADDRESS);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "grupo1");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "movement-group");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        JsonDeserializer<EventKafka<?>> deserializer =
+                new JsonDeserializer<>(EventKafka.class);
+        deserializer.addTrustedPackages("com.nttdata.bootcamp.events");
+        deserializer.setUseTypeMapperForKey(false);
 
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
-        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        return new DefaultKafkaConsumerFactory<>(
+                props,
+                new StringDeserializer(),
+                deserializer
+        );
+    }
 
-        ReceiverOptions<String, EventKafka<?>> options =
-                ReceiverOptions.<String, EventKafka<?>>create(props)
-                        .subscription(java.util.Collections.singleton(topic));
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, EventKafka<?>>
+    kafkaListenerContainerFactory() {
 
-        return KafkaReceiver.create(options);
+        ConcurrentKafkaListenerContainerFactory<String, EventKafka<?>> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        return factory;
     }
 }
